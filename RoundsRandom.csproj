@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <RoundsPath Condition="'$(ROUNDS_PATH)' != ''">$(ROUNDS_PATH)</RoundsPath>
+    <BepInExPath Condition="'$(BEPINEX_PATH)' != ''">$(BEPINEX_PATH)</BepInExPath>
+    <BepInExPath Condition="'$(BepInExPath)' == ''">$(RoundsPath)/BepInEx</BepInExPath>
+    <ManagedPath>$(RoundsPath)/ROUNDS_Data/Managed</ManagedPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="BepInEx"><HintPath>$(BepInExPath)/core/BepInEx.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(BepInExPath)/core/0Harmony.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Assembly-CSharp"><HintPath>$(ManagedPath)/Assembly-CSharp.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine"><HintPath>$(ManagedPath)/UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(ManagedPath)/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="PhotonUnityNetworking"><HintPath>$(ManagedPath)/PhotonUnityNetworking.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="PhotonRealtime"><HintPath>$(ManagedPath)/PhotonRealtime.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Photon3Unity3D"><HintPath>$(ManagedPath)/Photon3Unity3D.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <Target Name="CheckGameReferences" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(ManagedPath)/Assembly-CSharp.dll')" Text="Set ROUNDS_PATH to the ROUNDS installation directory." />
+    <Error Condition="!Exists('$(BepInExPath)/core/BepInEx.dll')" Text="Set BEPINEX_PATH to the BepInEx directory." />
+  </Target>
+</Project>
