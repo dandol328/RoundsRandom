@@ -262,6 +262,8 @@ namespace RoundsRandom
 
         private static IEnumerator RevealQueuedCards(RevealState state)
         {
+            yield return new WaitForSecondsRealtime(RevealInterval);
+
             while (state.Cards.Count > 0)
             {
                 GameObject card = state.Cards.Dequeue();
