@@ -31,7 +31,7 @@ namespace RoundsRandom
 
         private void OnDestroy()
         {
-            harmony?.UnpatchAll("com.dandol328.rounds.random");
+            harmony?.UnpatchSelf();
         }
     }
 
