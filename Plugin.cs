@@ -27,14 +27,19 @@ namespace RoundsRandom
     {
         internal static ConfigEntry<bool> Enabled;
         internal static ConfigEntry<SelectionMode> Mode;
+        internal static ConfigEntry<int> CardsPerRound;
         internal static SelectionMode EffectiveMode { get; private set; }
+        internal static int EffectiveCardsPerRound { get; private set; }
+        internal static event Action SettingsChanged;
         private Harmony harmony;
 
         private void Awake()
         {
             Enabled = Config.Bind("General", "Enabled", true, "Automatically choose cards instead of allowing manual picks.");
             Mode = Config.Bind("General", "Mode", SelectionMode.Random, "Random, Worst (lowest rarity), or Best (highest rarity).");
+            CardsPerRound = Config.Bind("General", "CardsPerRound", 1, "Number of cards to automatically choose each round, from 1 to 5.");
             EffectiveMode = Mode.Value;
+            EffectiveCardsPerRound = Mathf.Clamp(CardsPerRound.Value, 1, 5);
             Unbound.RegisterMenu("Rounds Random", null, CreateModMenu, null, false);
             var networkCallbacks = gameObject.AddComponent<NetworkEventCallbacks>();
             networkCallbacks.OnJoinedRoomEvent += OnJoinedRoom;
@@ -47,11 +52,12 @@ namespace RoundsRandom
             if (PhotonNetwork.IsMasterClient)
             {
                 EffectiveMode = Mode.Value;
-                BroadcastMode();
+                EffectiveCardsPerRound = Mathf.Clamp(CardsPerRound.Value, 1, 5);
+                BroadcastSettings();
             }
             else
             {
-                NetworkingManager.RPC(typeof(HostModeSync), nameof(HostModeSync.RequestMode));
+                NetworkingManager.RPC(typeof(HostModeSync), nameof(HostModeSync.RequestSettings));
             }
         }
 
@@ -66,19 +72,37 @@ namespace RoundsRandom
             EffectiveMode = mode;
             if (PhotonNetwork.InRoom)
             {
-                BroadcastMode();
+                BroadcastSettings();
             }
+            SettingsChanged?.Invoke();
         }
 
-        private static void BroadcastMode()
+        private static void SetCardsPerRound(int cardsPerRound)
+        {
+            if (PhotonNetwork.InRoom && !PhotonNetwork.IsMasterClient)
+            {
+                return;
+            }
+
+            CardsPerRound.Value = cardsPerRound;
+            EffectiveCardsPerRound = Mathf.Clamp(cardsPerRound, 1, 5);
+            if (PhotonNetwork.InRoom)
+            {
+                BroadcastSettings();
+            }
+            SettingsChanged?.Invoke();
+        }
+
+        private static void BroadcastSettings()
         {
             NetworkingManager.RPC_Others(
                 typeof(HostModeSync),
-                nameof(HostModeSync.ReceiveMode),
-                (int)EffectiveMode);
+                nameof(HostModeSync.ReceiveSettings),
+                (int)EffectiveMode,
+                EffectiveCardsPerRound);
         }
 
-        internal static void ApplyHostMode(int mode)
+        internal static void ApplyHostSettings(int mode, int cardsPerRound)
         {
             if (!Enum.IsDefined(typeof(SelectionMode), mode))
             {
@@ -87,6 +111,8 @@ namespace RoundsRandom
             }
 
             EffectiveMode = (SelectionMode)mode;
+            EffectiveCardsPerRound = Mathf.Clamp(cardsPerRound, 1, 5);
+            SettingsChanged?.Invoke();
         }
 
         private static void CreateModMenu(GameObject menu)
@@ -107,17 +133,38 @@ namespace RoundsRandom
                     modeButton.GetComponentInChildren<TextMeshProUGUI>().text = GetModeLabel().ToUpperInvariant();
                 });
 
+            GameObject cardsButton = null;
+            cardsButton = MenuHandler.CreateButton(
+                GetCardsPerRoundLabel(),
+                menu,
+                () =>
+                {
+                    SetCardsPerRound(EffectiveCardsPerRound % 5 + 1);
+                    cardsButton.GetComponentInChildren<TextMeshProUGUI>().text = GetCardsPerRoundLabel().ToUpperInvariant();
+                });
+
             MenuHandler.CreateText(
                 "Mode cycles through random, worst, and best.",
                 menu,
                 out _,
                 35,
                 false);
+
+            SettingsChanged += () =>
+            {
+                modeButton.GetComponentInChildren<TextMeshProUGUI>().text = GetModeLabel().ToUpperInvariant();
+                cardsButton.GetComponentInChildren<TextMeshProUGUI>().text = GetCardsPerRoundLabel().ToUpperInvariant();
+            };
         }
 
         private static string GetModeLabel()
         {
             return $"Mode: {EffectiveMode}";
+        }
+
+        private static string GetCardsPerRoundLabel()
+        {
+            return $"Cards per round: {EffectiveCardsPerRound}";
         }
 
         private void OnDestroy()
@@ -129,7 +176,7 @@ namespace RoundsRandom
     [HarmonyPatch(typeof(CardChoice), "DoPlayerSelect")]
     internal static class AutomaticPick
     {
-        private const float DisplaySeconds = 5f;
+        private const float DisplaySeconds = 2f;
         private static GameObject firstCard;
         private static int pickerId = -1;
         private static float readyAt;
@@ -203,10 +250,18 @@ namespace RoundsRandom
             if (selected)
             {
                 __instance.Pick(selected, false);
-                __instance.pickrID = -1;
                 firstCard = null;
             }
             return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(CardChoice), "DoPick")]
+    internal static class PickCountPatch
+    {
+        private static void Prefix(ref int picksToSet)
+        {
+            picksToSet = Plugin.EffectiveCardsPerRound;
         }
     }
 
@@ -293,21 +348,22 @@ namespace RoundsRandom
     internal static class HostModeSync
     {
         [UnboundRPC]
-        internal static void RequestMode()
+        internal static void RequestSettings()
         {
             if (PhotonNetwork.IsMasterClient)
             {
                 NetworkingManager.RPC_Others(
                     typeof(HostModeSync),
-                    nameof(ReceiveMode),
-                    (int)Plugin.EffectiveMode);
+                    nameof(ReceiveSettings),
+                    (int)Plugin.EffectiveMode,
+                    Plugin.EffectiveCardsPerRound);
             }
         }
 
         [UnboundRPC]
-        internal static void ReceiveMode(int mode)
+        internal static void ReceiveSettings(int mode, int cardsPerRound)
         {
-            Plugin.ApplyHostMode(mode);
+            Plugin.ApplyHostSettings(mode, cardsPerRound);
         }
     }
 
